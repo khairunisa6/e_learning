@@ -1,0 +1,200 @@
+---
+output:
+  html_document:
+    df_print: paged
+    highlight: tango
+  word_document: default
+---
+#Analisis Gerombol Menggunakan Algoritma K-Means
+Pada tutorial ini, akan dibahas tentang langkah-langkah penggerombolan amatan menggunakan algoritma k-means dengan menggunakan software R. Ilustrasi pada tutorial ini adalah penerapan algoritma k-means untuk mengelompokkan pelanggan dari suatu perusahaan provider telepon seluler. Sebelum memulai ini, jika belum tersedia pada komputer yang Anda gunakan, Anda perlu menginstall beberapa package R yang dibutuhkan yaitu: 
+
+
+```{r message=FALSE, warning=FALSE}
+library(cluster)
+library(dplyr)
+library(ggplot2)
+```
+
+
+###Membaca Data
+Data yang digunakan merupakan data dalam format csv (comma separated values) dengan nama "customer". Untuk menggunakannya, terlebih dahulu kita lakukan proses import data csv menjadi data frame di R menggunakan fungsi read.csv().
+
+```{r message=FALSE, warning=FALSE}
+data<-read.csv("E:/e_learning/customer.csv",sep=";")
+```
+Jika perintah di atas dijalankan maka kita akan memiliki sebuah data frame dengan nama data, yang memiliki 5 (lima) peubah dan 5000 amatan.  Nama dan penjelasan dari masing-masing peubah adalah sebagai berikut:
+\item
+1. durasi : durasi suatu nomor telepon setiap melakukan panggilan.\n
+2. REV_VOICE : jumlah biaya yang dikeluarkan untuk pemakaian panggilan suara.\n
+3. REV_SMS : jumlah biaya yang dikeluarkan untuk pemakaian SMS.\n
+4. REV_DATA : jumlah biaya yang dikeluarkan untuk pemakaian paket data.\n
+5. Rasio.on.net : Rasio penggunaan panggilan ke sesama operator.\n
+Berikut ini adalah perintah untuk mencetak 6 (enam) baris pertama dari data menggunakan fungsi head() dan hasilnya.
+```{r}
+head(data)
+nrow(data)
+```
+Penggerombolan yang akan dilakukan ditujukan untuk mengidentifikasi pola perilaku pelanggan dalam menggunakan produk seluler baik berupa panggilan (voice), pesan singkat (SMS), maupun internet (paket data).  Untuk itu, peubah yang nantinya akan digunakan sebagai input dalam analisis gerombol adalah:\ 
++ Persentase revenue dari panggilan
++ Persentase revenue dari SMS
++ Persentase revenue dari penggunaan internet
++ Total durasi panggilan dalam sebulan
++ Persentase panggilan sesama operator
++ Peubah keempat dan kelima sudah tersedia, dan kita perlu melakukan transformasi untuk memperoleh peubah pertama, kedua dan ketiga.  Berikut ini adalah perintah untuk melakukan hal tersebut.
+
+```{r message=FALSE, warning=FALSE}
+data$REV_VOICE1=data$REV_VOICE/(data$REV_VOICE+data$REV_SMS+data$REV_DATA)
+data$REV_SMS1=data$REV_SMS/(data$REV_VOICE+data$REV_SMS+data$REV_DATA)
+data$REV_DATA1=data$REV_DATA/(data$REV_VOICE+data$REV_SMS+data$REV_DATA)
+data<-data[,-c(2,4,5)]
+head(data)
+```
+
+###Eksplorasi
+Sebelum kita lakukan proses clustering, kita lakukan dulu tahapan eksplorasi data untuk mengenali data yang dimiliki dengan lebih baik.  Fungsi summary() dapat memberikan nilai statistik lima serangkai dan rata-rata dari setiap peubah numerik yang ada pada gugus data yang kita miliki.  Berikut ilustrasi penggunaan dan hasilnya.
+```{r message=FALSE, warning=FALSE}
+summary(data)
+```
+Perhatikan statistik deskriptif yang dihasilkan untuk peubah durasi.  Peubah ini memiliki nilai maksimum yang jauh lebih besar dibandingkan kuartil ketiganya yang mengindikasikan ada beberapa pelanggan yang total durasi panggilannya jauh lebih besar dibandingkan pelanggan lain secara umum.  Adanya nilai ekstrim besar ini juga yang mengakibatkan nilai mean (rata-rata) berbeda jauh dibandingkan nilai mediannya.
+Keberadaan pencilan (outlier) pada peubah durasi dapat dengan mudah diidentifikasi melalui grafik histogram yang dihasilkan oleh fungsi hist() seperti berikut ini.  Lihat bahwa sebagian besar data bernilai kecil sehingga batang di sebelah kiri sangat dominan tingginya, namun ada batang-batang sangat kecil di bagian kanan.
+
+```{r message=FALSE, warning=FALSE}
+hist(data$durasi,main="Distribusi Pelanggan Berdasarkan Durasi Panggilan",xlab="Durasi(menit)",breaks=20,col="#66CCFF")
+```
+
+Untuk diketahui, pada fungsi hist() terdapat beberapa opsi yang bisa kita atur atau ubah nilainya, misalnya:
+-	main, adalah opsi untuk memberikan judul grafik yang pada ilustrasi di atas diisikan "Distribusi Pelanggan Berdasarkan Durasi Panggilan"
+-	xlab, merupakan opti untuk memberikan label pada sumbu horizontal
+-	breaks, merupakan opsi untuk menentukan banyaknya batang atau interval nilai data yang digambarkan distribusinya
+Karena adanya pencilan, kita tidak mudah membaca histogram di atas karena hampir semua nilai data termasuk pada selang nilai pertama.  Untuk itu, kita dapat menggambar hanya sebagian atau subset data saja.  Misalnya, berikut ini adalah menggambarkan histogram dari data durasi yang nilainya kurang dari atau sama dengan 3000 menit.
+
+```{r}
+hist(data$durasi[data$durasi<=3000],main="Distribusi Pelanggan Berdasarkan Durasi Panggilan",xlab="Durasi(menit)",breaks=20,col="#66CCFF")
+```
+
+Histogram sebaran nilai data dari beberapa variabel lain dapat diperoleh sebagai berikut.
+
+```{r message=FALSE, warning=FALSE}
+par(ps = 12, cex = 1, cex.main = 1)
+hist(data$REV_DATA1,main="Distribusi Pelanggan Berdasarkan \nPersentase Pengeluaran Pulsa untuk Pemakaian Data",xlab="Persantase Pulsa untuk Data",breaks=20,col="#66CCFF")
+```
+```{r message=FALSE, warning=FALSE}
+hist(data$REV_SMS1,main="Distribusi Pelanggan Berdasarkan \nPersentase Pengeluaran Pulsa untuk SMS",xlab="Persantase Pulsa untuk SMS",breaks=20,col="#66CCFF")
+```
+```{r message=FALSE, warning=FALSE}
+hist(data$REV_VOICE1,main="Distribusi Pelanggan Berdasarkan \nPersentase Pengeluaran Pulsa untuk Panggilan Suara",xlab="Persantase Pulsa untuk Telepon",breaks=20,col="#66CCFF")
+```
+
+Beberapa informasi yang kita hasilkan dari histogram-histogram di atas antara lain adalah:\ 
+-Ada sekitar 1200 dari 5000 pelanggan atau sekitar 25% yang belum menggunakan paket data internet.  Terdapat pula sekitar 10% pelanggan yang penggunaan 80% pulsanya hanya untuk internet saja
+-Persentase penggunaan pulsa untuk telepon sangat beragam.  Banyaknya pelanggan untuk berbagai kelompok persentase ini relatif sama.
+
+Informasi lain yang juga penting untuk dilihat adalah korelasi antar peubah.  Korelasi ini dapat dihasilkan menggunakan fungsi cor() dan akan dihasilkan matriks korelasi berukuran 5 x  5 seperti berikut ini.
+
+```{r message=FALSE, warning=FALSE}
+cor(data)
+```
+Tampak bahwa persentase penghasilan untuk panggilan berkorelasi negatif dengan persentase penghasilan dari penggunaan paket data internet (korelasi = -0.88) yang mengindikasikan bahwa semakin banyak penggunaan internet pelanggan maka penggunaan panggilan akan berkurang, dan demikian pula sebaliknya.  Sedangkan penghasilan dari panggilan dan SMS relatif tidak berkorelasi (korelasi = -0.02).  Seperti yang dapat dipahami secara intuitif, peubah durasi panggilan memiliki korelasi yang positif dengan penghasilan dari panggilan.  Nilai korelasi yang tidak terlalu besar dapat dimengerti karena provider menyediakan paket-paket promo panggilan sehingga pelanggan dapat melakukan panggilan berdurasi lama tetapi harganya murah, tapi ada juga pelanggan yang melakukan panggilan tanpa mengaktifkan paket promo.
+
+###Pembakuan data
+Tujuan dari proses penggerombolan adalah mengelompokkan objek dengan karakter yang mirip ke dalam sebuah gerombol dan objek dengan karakteristik yang berbeda ditempatkan di gerombol yang lain. Kemiripan antar objek dapat diukur dengan menggunakan jarak euclidean yang dihitung dengan formula:
+$$d = \sqrt{(x_1 - x_2)^2 + (y_1 - y_2)^2}$$
+Hasil dari perhitungan jarak sangat tergantung pada skala dari peubah yang digunakan.  Dalam banyak hal, disarankan untuk melakukan pembakuan data sehingga kontribusi setiap peubah dalam perhitungan jarak menjadi lebih berimbang.  Proses pembakuan data dapat dilakukan dengan perintah berikut:
+```{r message=FALSE, warning=FALSE}
+baku<-scale(data)
+head(baku)
+```
+##Penerapan K-means
+Algoritma k-means memerlukan pengguna menentukan berapa banyak gerombol yang akan dibentuk.  Pada ilustrasi ini secara subjektif kita akan tentukan bahwa gerombol yang dibentuk adalah 3 (tiga) dan kemudian nanti akan dipaparkan bagaimana memperoleh banyaknya gerombol optimal dari data yang ada.
+Berikut ini adalah ilustrasi penggunaan fungsi kmeans() untuk menghasilkan 3 gerombol.  Ingat bahwa gugus data yang digunakan adalah gugus data yang peubahnya telah dibakukan.
+
+```{r message=FALSE, warning=FALSE}
+library(cluster)
+set.seed(123)
+kluster<-kmeans(baku,3)
+```
+Selanjutnya menarik untuk melihat hasil kerja algoritma k-means di atas. Pertama kita bisa menampilkan berapa banyaknya anggota dari masing-masing gerombol.  Perintah yang dapat diberikan adalah
+```{r}
+kluster$size
+```
+Terlihat bahwa dari 5000 pelanggan, terdapat 693 pelanggan yang dimasukkan ke dalam gerombol pertama, 2070 pelanggan di gerombol kedua, dan 2237 pelanggan di gerombol ketiga.
+Apa itu gerombol pertama, kedua, dan ketiga?  Pertanyaan ini dapat kita jawab melalui proses profiling dengan melihat rata-rata dari masing-masing peubah di setiap gerombol.  Nilai ini tidak lain adalah centroid atau center dari gerombol yang dapat dilihat dengan perintah berikut ini.
+```{r}
+kluster$centers #diceritakan
+```
+Pembacaan hasil di atas memang agak "tricky" karena rata-rata yang ditampilkan berasal dari peubah yang sudah dibakukan.  Peubah yang dibakukan ini bernilai negatif kalau nilai asalnya kecil dan akan positif kalau nilai asalnya besar.
+Lihat misalnya cluster pertama, memiliki nilai REV_SMS1 yang lebih besar dibandingkan cluster lain dan REV_VOICE1 serta REV_DATA1 yang negatif.  Durasi  menelepon juga negatif.  Ini mengindikasikan bahwa 693 pelanggan di gerombol pertama ini memiliki karakteristik persentase SMS yang dominan.  Kita barangkali dapat memberi label gerombol pertama sebagai "SMS mania" karena hal tersebut.
+Sekarang lihat cluster kedua.  Pelanggan di gerombol ini memiliki rata-rata durasi menelepon yang lebih besar dibanding gerombol yang lain dan tentu saja juga REV_VOICE1 yang lebih tinggi.  Gerombol ini dapat kita labeli sebagai gerombol "CALL mania".  Sementara gerombol ketiga tampaknya diisi oleh pelanggan pemakai aktif internet.
+Seberapa baik hasil clustering di atas?  Salah satu indikasi yang dapat digunakan adalah dengan melihat indeks silhouette yang merupakan perbandingan antara jarak objek antar gerombol dengan jarak objek dalam gerombol.  Semakin besar nilai indeks ini mengindikasikan semakin baik hasil clustering yang diperoleh.  Nilai indeks silhouette dari hasil penggerombolan di atas adalah sebesar 1885. 76 yang diperoleh menggunakan perintah berikut.
+
+```{r}
+jarak<-dist(baku)
+sk <- silhouette(kluster$cl, jarak)
+nilaisk<-sum(sk[,3])
+nilaisk
+```
+
+###Penentuan Banyaknya Kluster Optimal
+Untuk mengetahui apakah hasil penggerombolan 5000 pelanggan menjadi 3 gerombol sudah baik, kita dapat melakukan pemeriksaan dengan menghitung indeks silhouette untuk berbagai banyaknya gerombol.  Berikut ini adalah program untuk menghasilkan nilai indeks untuk gerombol sebanyak 2 sampai dengan 20, dan kemudian menampilkannya dalam bentuk plot.  Nilai indeks paling besar dihasilkan ketika ada 5 gerombol, sehingga k=5 adalah yang optimal.
+```{r message=FALSE, warning=FALSE}
+set.seed(123)
+jarak<-dist(baku)
+sk<-NULL
+for(k in 2:20){
+kluster<-kmeans(baku,k)
+sk <- silhouette(kluster$cl, jarak)
+nilaisk[k-1]<-sum(sk[,3])
+}
+nilaisk
+```
+
+```{r}
+plot(2:20,nilaisk,type='b')
+```
+
+Selain menggunakan indeks silhouette, kita dapat pula menggunakan ukuran lain yaitu rasio antara jumlah kuadrat dalam cluster dengan jumlah kuadrat antar cluster.  Hasil yang baik tentunya yang memberikan nilai rendah.  Jika perubahan dari satu nilai k ke nilai k lain sudah kecil, maka kita bisa menyimpulkan itu adalah nilai k yang optimal.
+Berikut ini program untuk menghasilkan nilai tersebut dan menampilkan plotnya.  Tampak bahwa perubahan nilai dari k=5 ke k=6 sudah sangat kecil, sehingga kita juga dapat mengatakan bahwa pemilihan k=5 cukup beralasan.
+
+```{r message=FALSE, warning=FALSE}
+seed=123
+banyakcluster=2:20
+kriteria=NULL
+for(i in banyakcluster){
+set.seed(seed)
+kluster<-kmeans(baku[,-3],i)
+kriteria[i-1]=kluster$tot.withinss/kluster$betweenss/banyakcluster
+}
+plot(banyakcluster,kriteria,type="b",xlab="Banyak Cluster", Ylab="kriteria",main="Grafik Penentuan Banyaknya Kluster")
+```
+
+###Hasil Akhir Penggerombolan
+Jadi, berdasarkan nilai sillhoute dan rasio jumlah kuadrat, kita dapatkan bahwa banyaknya gerombol (k) optimum adalah 5.  Untuk itu, kita lakukan proses clustering menggunakan k-means dengan k=5 sebagai berikut.
+
+```{r message=FALSE, warning=FALSE}
+set.seed(123)
+hasil<-kmeans(baku,5)
+```
+Untuk memudahkan interpretasi cluster/gerombol yang dihasilkan, hasil dari prosedur k-means kita gabungkan dengan data asli sebagai berikut sehingga kode cluster kita letakkan sebagai kolom terakhir pada data.
+
+```{r}
+dat.hasil<-data.frame(cbind(data,hasil$cluster))
+head(dat.hasil)
+```
+Banyaknya anggota setiap cluster/gerombol dan rata-rata maasing-masing peubah dari setiap gerombol dapat dihasilkan menggunakan perintah berikut. fumgsi group_by() berguna untuk mengelompokkan
+```{r}
+table(dat.hasil$hasil.cluster)
+grup<-group_by(dat.hasil, hasil.cluster)
+data.frame(grup%>%summarise(rataan_durasi = mean(durasi),rataan_rasio=mean(Rasio.on.net),
+                 rataan_data = mean(REV_DATA1),
+                 rataan_voice=mean(REV_VOICE1),rataan_sms=mean(REV_SMS1)))
+```
+
+Berdasarkan output di atas, ringkasan profil dari masing-masing gerombol adalah sebagai berikut:
+Gerombol #1: aktif  menggunakan SMS dan panggilan, tapi sedikit internet
+Gerombol #2: sangat aktif melakukan panggilan
+Gerombol #3: sangat aktif menggunakan internet dan kadang-kadang menelepon
+Gerombol #4: sangat aktif melakukan panggilan dengan durasi yang panjang
+Gerombol #5: sangat aktif menggunakan internet, sesekali menelepon tadi tidak lama durasinya.
+
+Demikian penjelasan tentang algoritma k-means dan penerapannya.   Jika ada pertanyaan, saran serta masukan, dapat disampaikan kepada Departemen Statistika FMIPA IPB melalui email: statistika@ipb.ac.id
+
